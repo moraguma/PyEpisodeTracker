@@ -1,5 +1,7 @@
 from gymnasium import Wrapper, Env
 from peasyprofiller.profiller import profiller as pprof
+from pyepisodetracker.episode_tracker import EpisodeTracker
+import numpy as np
 
 class AtariWrapper(Wrapper):
     def __init__(self, env: Env, verbose: bool=True):
@@ -17,6 +19,10 @@ class AtariWrapper(Wrapper):
         pprof.stop("Environment")
     
 
+    def slice_obs(self, obs):
+        return obs[15:196, 8:]
+
+
     def reset(self, seed=None):
         pprof.start("Environment")
         self.total_steps = 0
@@ -24,7 +30,7 @@ class AtariWrapper(Wrapper):
         obs, info = self.env.reset(seed=seed)
         pprof.stop("Environment")
 
-        return obs, info
+        return self.slice_obs(obs), info
     
 
     def step(self, action_data):
@@ -41,4 +47,32 @@ class AtariWrapper(Wrapper):
             print(f"{self.total_steps} steps")
         pprof.stop("Environment")
 
-        return obs, reward, terminated, info, done
+        return self.slice_obs(obs), reward, terminated, info, done
+    
+class EpisodeTrackerWrapper(AtariWrapper):
+    def __init__(self, env: Env, verbose: bool=True):
+        super().__init__(env, verbose)
+
+        self.episode_tracker = EpisodeTracker(np.array([np.array([142, 142, 142]), np.array([170, 170, 170]), np.array([214, 214, 214]), np.array([0, 0, 0])]))
+        self.to_render = None
+    
+
+    def step(self, action_data):
+        obs, reward, terminated, info, done = super().step(action_data)
+        events = self.episode_tracker.process_frame(obs)
+
+        self.to_render = events[0]
+        return events, reward, terminated, info, done
+    
+
+    def reset(self, seed=None):
+        obs, info = super().reset(seed)
+        events = self.episode_tracker.process_frame(obs)
+        self.episode_tracker.finish_episode()
+        
+        self.to_render = events[0]
+        return events, info
+    
+
+    def render(self):
+        return self.to_render
