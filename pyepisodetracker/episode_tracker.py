@@ -7,26 +7,26 @@ class Vector2():
     def __init__(self, x: float, y: float) -> None:
         self.x = x
         self.y = y
-    
+
+
+    def manhat_length(self):
+        return abs(self.x) + abs(self.x)
+
 
     def __sub__(self, other):
-        self.x -= other.x
-        self.y -= other.y
+        return Vector2(self.x - other.x, self.y - other.y)
     
 
     def __add__(self, other):
-        self.x += other.x
-        self.y += other.y
-    
+        return Vector2(self.x + other.x, self.y + other.y)
+
 
     def __mul__(self, other):
-        self.x *= other
-        self.y *= other
-    
+        return Vector2(self.x * other, self.y * other)
+
 
     def __div__(self, other):
-        self.x /= other
-        self.y /= other
+        return Vector2(self.x / other, self.y / other)
 
     
     def __eq__(self, value: object) -> bool:
@@ -34,21 +34,31 @@ class Vector2():
 
 
 class Object():
-    def __init__(self, position: Vector2, size: Vector2, color: np.array):
+    def __init__(self, position: Vector2, size: Vector2, color: int):
         self.position = position
         self.size = size
         self.color = color
         self.category = None
 
 
+CAT_SIZE_TOLERANCE = 2
+
+
 class ObjectCategory():
-    def __init__(self, size: Vector2, color: np.array) -> None:
+    def __init__(self, size: Vector2, color: int, indicator_color: np.array) -> None:
         self.size = size
         self.color = color
+        self.indicator_color = indicator_color
     
     
     def belongs(self, object: Object) -> bool:
-        return self.size == object.size
+        return (self.size - object.size).manhat_length() <= CAT_SIZE_TOLERANCE
+    
+
+    @staticmethod
+    def from_obj(object: Object):
+        return ObjectCategory(object.size, object.color, np.random.randint(256, size=(3)))
+
 
 
 class ObjectTransition():
@@ -102,6 +112,13 @@ class EpisodeTracker():
 
         self.timestep += 1
 
+        # Render mode
+
+        for obj in objs:
+            top_left = obj.position
+            bottom_right = obj.position + obj.size
+            cv2.rectangle(separated_bg, (top_left.x, top_left.y), (bottom_right.x, bottom_right.y), tuple(map(int, obj.category.indicator_color)), 2)
+
         return separated_bg, objs, transitions, events
 
 
@@ -120,20 +137,57 @@ class EpisodeTracker():
             color_mask = cv2.inRange(data, lower_bound, upper_bound)
 
             mask[color_mask > 0] = 0
+        
+        result = cv2.bitwise_and(data, data, mask=mask)
 
         pprof.stop("ET_BGSEP")
 
-        return mask
+        return result
 
     
     def object_identification(self, data: np.array) -> list[Object]:
         pprof.start("ET_OBJID")
+
+        r, _, _ = cv2.split(data)
+        peaks = np.unique(r)
+
+        objects = []
+        for i, peak in enumerate(peaks):
+            if peak == 0: # We're not considering black
+                continue 
+            
+            peak = np.array(peak)
+            mask = cv2.inRange(r, peak, peak)
+            contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+            for j, contour in enumerate(contours):
+                bbox = cv2.boundingRect(contour)
+                if bbox[2] <= 1 or bbox[3] <= 1 or bbox[0] == 0 or bbox[1] == 0 or bbox[0] + bbox[2] >= r.shape[1] or bbox[1] + bbox[3] >= r.shape[0]:
+                    continue
+
+                objects.append(Object(Vector2(bbox[0], bbox[1]), Vector2(bbox[2], bbox[3]), r))
+
         pprof.stop("ET_OBJID")
+
+        return objects
 
     
     def object_categorization(self, data: list[Object]) -> list[Object]:
         pprof.start("ET_OBJCAT")
+
+        for obj in data:
+            for cat in self.object_categories:
+                if cat.belongs(obj):
+                    obj.category = cat
+                    break
+            if obj.category is None:
+                new_cat = ObjectCategory.from_obj(obj)
+                self.object_categories.append(new_cat)
+                obj.category = new_cat
+
         pprof.stop("ET_OBJCAT")
+
+        return data
 
     
     def object_tracking(self, data: list[Object]) -> list[ObjectTransition]:

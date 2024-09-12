@@ -9,7 +9,7 @@ class AtariWrapper(Wrapper):
         super().__init__(env)
 
         self.env = env
-        self.frames_per_action = 4
+        self.frames_per_action = 1
 
         self.step_report = 100
         self.total_steps = 0
@@ -43,8 +43,6 @@ class AtariWrapper(Wrapper):
         
         self.total_steps += 1
 
-        if self.total_steps % self.step_report == 0 and self.verbose:
-            print(f"{self.total_steps} steps")
         pprof.stop("Environment")
 
         return self.slice_obs(obs), reward, terminated, info, done
@@ -53,7 +51,7 @@ class EpisodeTrackerWrapper(AtariWrapper):
     def __init__(self, env: Env, verbose: bool=True):
         super().__init__(env, verbose)
 
-        self.episode_tracker = EpisodeTracker(np.array([np.array([142, 142, 142]), np.array([170, 170, 170]), np.array([214, 214, 214]), np.array([0, 0, 0])]))
+        self.episode_tracker = EpisodeTracker(np.array([np.array([142, 142, 142]), np.array([170, 170, 170]), np.array([214, 214, 214])]))
         self.to_render = None
     
 
