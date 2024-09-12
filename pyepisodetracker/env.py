@@ -1,9 +1,10 @@
-from gymnasium import Env
+from gymnasium import Wrapper, Env
 from peasyprofiller.profiller import profiller as pprof
 
-class AtariEnv(Env):
+class AtariWrapper(Wrapper):
     def __init__(self, env: Env, verbose: bool=True):
         pprof.start("Environment")
+        super().__init__(env)
 
         self.env = env
         self.frames_per_action = 4
@@ -16,11 +17,11 @@ class AtariEnv(Env):
         pprof.stop("Environment")
     
 
-    def reset(self):
+    def reset(self, seed=None):
         pprof.start("Environment")
         self.total_steps = 0
 
-        obs, info = self.env.reset()
+        obs, info = self.env.reset(seed=seed)
         pprof.stop("Environment")
 
         return obs, info
