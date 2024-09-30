@@ -18,7 +18,7 @@ setup(
     install_requires=[
         'setuptools>=70.0.0',
         'torchbringer',
-        'pygame',
+        'pygame'
     ],
 
     classifiers=[

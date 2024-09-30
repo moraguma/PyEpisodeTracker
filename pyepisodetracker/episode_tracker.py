@@ -74,23 +74,27 @@ class Event():
         self.current_pos = current_pos
 
 
-class AppearanceEvent():
+class AppearanceEvent(Event):
     def __init__(self, obj_category: str, current_pos: Vector2) -> None:
         super().__init__(obj_category, "APPEARANCE", current_pos)
 
 
-class MovementEvent():
+class MovementEvent(Event):
     def __init__(self, obj_category: str, initial_pos: Vector2, initial_timestamp: int, current_pos: Vector2):
         super().__init__(obj_category, "MOVEMENT", current_pos)
         self.initial_pos = initial_pos
         self.initial_timestamp = initial_timestamp
-    
+
+
+    def get_vel(self, current_timestep: int):
+        return (self.current_pos - self.initial_pos) / float(current_timestep - self.initial_timestamp)
+
 
     def get_state(self, current_timestep: int):
         """
         Given a timestep, returns the current position of this event and its average velocity
         """
-        return self.current_pos, (self.current_pos - self.initial_pos) / float(current_timestep - self.initial_timestamp)
+        return self.current_pos, self.get_vel(current_timestep)
 
 
 class EpisodeTracker():
@@ -189,9 +193,10 @@ class EpisodeTracker():
 
         return data
 
-    
+
     def object_tracking(self, data: list[Object]) -> list[ObjectTransition]:
         pprof.start("ET_OBJTRK")
+
         pprof.stop("ET_OBJTRK")
 
 
