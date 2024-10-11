@@ -3,6 +3,7 @@ import gymnasium as gym
 from gymnasium.utils.play import play
 from keymap import KEYMAP
 import cv2
+import numpy as np
 from peasyprofiller.profiller import profiller as pprof
 
 class Monitor():
@@ -26,6 +27,6 @@ class Monitor():
 ###############
 cv2.imwrite("test.png", gym.make("ALE/Freeway-v5", render_mode="rgb_array").reset()[0])
 
-env = EpisodeTrackerWrapper(gym.make("ALE/Freeway-v5", render_mode="rgb_array"), 2)
+env = EpisodeTrackerWrapper(gym.make("ALE/Freeway-v5", render_mode="rgb_array"), 2, np.array([10, 2]))
 monitor = Monitor()
 play(env, callback=monitor.callback, keys_to_action=KEYMAP)

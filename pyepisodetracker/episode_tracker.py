@@ -9,6 +9,7 @@ ORIENTATION_DIF_TOLERANCE = 0.2
 AREA_DIF_TOLERANCE = 16
 
 SPEED_DIF_TOLERANCE = 6
+MAX_SPEED = 50
 
 
 class Vector2():
@@ -117,7 +118,7 @@ class MovementEvent(Event):
         self.initial_timestep = initial_timestep
 
 
-    def get_vel(self, current_timestep: int):
+    def get_vel(self, current_timestep: int) -> Vector2:
         return (self.current_pos - self.initial_pos) / float(current_timestep - self.initial_timestep)
 
 
@@ -153,7 +154,7 @@ class EpisodeTracker():
         objs = self.object_categorization(objs)
         transitions = self.object_tracking(objs)
         events = self.event_tracking(objs, transitions)
-        filtered_events = self.filtering(events)
+        filtered_events, valid_categories = self.filtering(events)
 
         self.tracked_objects = objs
         self.tracked_events = events
@@ -176,7 +177,11 @@ class EpisodeTracker():
                     cv2.circle(separated_bg, (event.current_pos.x, event.current_pos.y), 4, (255, 0, 0), 2)
                 else:
                     cv2.arrowedLine(separated_bg, (event.initial_pos.x, event.initial_pos.y), (event.current_pos.x, event.current_pos.y), (0, 0, 255), 2)
-        return separated_bg, filtered_events
+        return separated_bg, filtered_events, valid_categories
+
+
+    def get_event_vel(self, event: MovementEvent) -> Vector2:
+        return event.get_vel(self.timestep)
 
 
     def background_separation(self, data: np.array, threshold=1) -> np.array:
@@ -377,19 +382,19 @@ class EpisodeTracker():
                 j -= 1
             categories[j + 1] = key
 
-        # Delete all non relevant categories
+        # Delete all non relevant categories and overly speedy movement events
         filtered_events = events.copy()
         valid_categories = categories[:self.relevant_cat_count]
         pos = 0
         while pos < len(filtered_events):
-            if not filtered_events[pos].obj_category in valid_categories:
+            if not filtered_events[pos].obj_category in valid_categories or (filtered_events[pos].category == "MOVEMENT" and filtered_events[pos].get_vel(self.timestep).manhat_length() > MAX_SPEED): 
                 filtered_events.pop(pos)
             else:
                 pos += 1
 
         pprof.stop("ET_FLTR")
 
-        return filtered_events
+        return filtered_events, valid_categories
 
     
     def finish_episode(self) -> None:
