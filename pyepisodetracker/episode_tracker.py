@@ -5,14 +5,20 @@ from typing import Dict
 from peasyprofiller.profiller import profiller as pprof
 
 
-CAT_SIZE_TOLERANCE = 1
-SPEED_DIF_TOLERANCE = 4
+ORIENTATION_DIF_TOLERANCE = 0.2
+AREA_DIF_TOLERANCE = 16
+
+SPEED_DIF_TOLERANCE = 6
 
 
 class Vector2():
     def __init__(self, x: float, y: float) -> None:
         self.x = x
         self.y = y
+
+
+    def area(self):
+        return abs(self.x * self.y)
 
 
     def manhat_length(self):
@@ -47,31 +53,32 @@ class Vector2():
 
 
 class Object():
-    def __init__(self, position: Vector2, size: Vector2, color: int):
+    def __init__(self, position: Vector2, size: Vector2, orientation: float, color: int):
         self.position = position
         self.size = size
+        self.orientation = orientation
         self.color = color
         self.category = None
 
 
     def __repr__(self) -> str:
-        return f"obj @ {self.position}"
+        return f"obj @ {self.position} -> [Area: {self.size.area()}, Solidity: {self.orientation}]"
 
 
 class ObjectCategory():
-    def __init__(self, size: Vector2, color: int, indicator_color: np.array) -> None:
+    def __init__(self, size: Vector2, orientation: float, indicator_color: np.array) -> None:
         self.size = size
-        self.color = color
+        self.orientation = orientation
         self.indicator_color = indicator_color
     
     
     def belongs(self, object: Object) -> bool:
-        return (self.size - object.size).manhat_length() <= CAT_SIZE_TOLERANCE
+        return abs(self.size.area() - object.size.area()) <= AREA_DIF_TOLERANCE and abs(self.orientation - object.orientation) <= ORIENTATION_DIF_TOLERANCE
     
 
     @staticmethod
     def from_obj(object: Object):
-        return ObjectCategory(object.size, object.color, np.random.randint(256, size=(3)))
+        return ObjectCategory(object.size, object.orientation, np.random.randint(256, size=(3)))
 
 
     def __repr__(self) -> str:
@@ -126,7 +133,7 @@ class MovementEvent(Event):
 
 
 class EpisodeTracker():
-    def __init__(self, background_colors: np.array, headless: bool=False) -> None:
+    def __init__(self, background_colors: np.array, relevant_cat_count: int=2, headless: bool=False) -> None:
         self.background_colors = background_colors
 
         self.headless = headless
@@ -134,6 +141,10 @@ class EpisodeTracker():
         self.tracked_objects: list[Object] = []
         self.tracked_events: list[Event] = []
         self.timestep: int = 0
+        
+        self.category_counts: dict[ObjectCategory, int] = {}
+        self.total_category_appearances = 0
+        self.relevant_cat_count = relevant_cat_count
 
 
     def process_frame(self, data: np.array) -> list[Event]:
@@ -142,6 +153,7 @@ class EpisodeTracker():
         objs = self.object_categorization(objs)
         transitions = self.object_tracking(objs)
         events = self.event_tracking(objs, transitions)
+        filtered_events = self.filtering(events)
 
         self.tracked_objects = objs
         self.tracked_events = events
@@ -157,14 +169,14 @@ class EpisodeTracker():
                 cv2.rectangle(separated_bg, (top_left.x, top_left.y), (bottom_right.x, bottom_right.y), tuple(map(int, obj.category.indicator_color)), 2)
             for obj in transitions:
                 cv2.arrowedLine(separated_bg, (obj.position.x, obj.position.y), (transitions[obj].position.x, transitions[obj].position.y), (255, 255, 255), 2)
-            for event in events:
+            for event in filtered_events:
                 if event.category == "APPEARANCE":
                     cv2.circle(separated_bg, (event.current_pos.x, event.current_pos.y), 4, (0, 255, 0), 2)
                 elif event.category == "DISAPPEARANCE":
                     cv2.circle(separated_bg, (event.current_pos.x, event.current_pos.y), 4, (255, 0, 0), 2)
                 else:
                     cv2.arrowedLine(separated_bg, (event.initial_pos.x, event.initial_pos.y), (event.current_pos.x, event.current_pos.y), (0, 0, 255), 2)
-        return separated_bg, objs, transitions, events
+        return separated_bg, filtered_events
 
 
     def background_separation(self, data: np.array, threshold=1) -> np.array:
@@ -210,11 +222,21 @@ class EpisodeTracker():
                 if bbox[2] <= 1 or bbox[3] <= 1 or bbox[0] == 0 or bbox[1] == 0 or bbox[0] + bbox[2] >= r.shape[1] or bbox[1] + bbox[3] >= r.shape[0]:
                     continue
 
-                objects.append(Object(Vector2(bbox[0], bbox[1]), Vector2(bbox[2], bbox[3]), r))
+                orientation = cv2.contourArea(contour) / (bbox[2] * bbox[3])
+                objects.append(Object(Vector2(bbox[0], bbox[1]), Vector2(bbox[2], bbox[3]), orientation, r))
 
         pprof.stop("ET_OBJID")
 
         return objects
+
+
+    def update_category_importance(self, category: ObjectCategory):
+        self.category_counts[category] += 1
+        self.total_category_appearances += 1
+
+
+    def get_category_importance(self, category: ObjectCategory) -> float:
+        return self.category_counts[category] / self.total_category_appearances
 
     
     def object_categorization(self, data: list[Object]) -> list[Object]:
@@ -229,6 +251,9 @@ class EpisodeTracker():
                 new_cat = ObjectCategory.from_obj(obj)
                 self.object_categories.append(new_cat)
                 obj.category = new_cat
+
+                self.category_counts[new_cat] = 0
+            self.update_category_importance(obj.category)
 
         pprof.stop("ET_OBJCAT")
 
@@ -335,6 +360,36 @@ class EpisodeTracker():
         pprof.stop("ET_EVTRK")
 
         return events
+
+
+    def filtering(self, events: list[Event]) -> list[Event]:
+        pprof.start("ET_FLTR")
+
+        # Order categories
+        categories = list(self.category_counts.keys())
+
+        for i in range(1, len(categories)):
+            key = categories[i]
+            j = i - 1
+
+            while j >= 0 and self.get_category_importance(key) > self.get_category_importance(categories[j]):
+                categories[j + 1] = categories[j]
+                j -= 1
+            categories[j + 1] = key
+
+        # Delete all non relevant categories
+        filtered_events = events.copy()
+        valid_categories = categories[:self.relevant_cat_count]
+        pos = 0
+        while pos < len(filtered_events):
+            if not filtered_events[pos].obj_category in valid_categories:
+                filtered_events.pop(pos)
+            else:
+                pos += 1
+
+        pprof.stop("ET_FLTR")
+
+        return filtered_events
 
     
     def finish_episode(self) -> None:

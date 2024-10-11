@@ -4,12 +4,12 @@ from pyepisodetracker.episode_tracker import EpisodeTracker
 import numpy as np
 
 class AtariWrapper(Wrapper):
-    def __init__(self, env: Env, verbose: bool=True):
+    def __init__(self, env: Env, frames_per_action: int, verbose: bool=True):
         pprof.start("Environment")
         super().__init__(env)
 
         self.env = env
-        self.frames_per_action = 1
+        self.frames_per_action = frames_per_action
 
         self.step_report = 100
         self.total_steps = 0
@@ -48,10 +48,10 @@ class AtariWrapper(Wrapper):
         return self.slice_obs(obs), reward, terminated, info, done
     
 class EpisodeTrackerWrapper(AtariWrapper):
-    def __init__(self, env: Env, verbose: bool=True):
-        super().__init__(env, verbose)
+    def __init__(self, env: Env, frames_per_action: int, relevant_cat_count: int=2, verbose: bool=True):
+        super().__init__(env, frames_per_action, verbose)
 
-        self.episode_tracker = EpisodeTracker(np.array([np.array([142, 142, 142]), np.array([170, 170, 170]), np.array([214, 214, 214])]))
+        self.episode_tracker = EpisodeTracker(np.array([np.array([142, 142, 142]), np.array([170, 170, 170]), np.array([214, 214, 214])]), relevant_cat_count)
         self.to_render = None
     
 
@@ -60,7 +60,8 @@ class EpisodeTrackerWrapper(AtariWrapper):
         events = self.episode_tracker.process_frame(obs)
 
         self.to_render = events[0]
-        return events, reward, terminated, info, done
+        
+        return events[1], reward, terminated, info, done
     
 
     def reset(self, seed=None):
