@@ -38,14 +38,14 @@ class AtariWrapper(Wrapper):
         i = 0
         reward = 0.0
         while i < self.frames_per_action and reward == 0.0:
-            obs, reward, terminated, info, done = self.env.step(action_data)
+            obs, reward, terminated, truncated, info = self.env.step(action_data)
             i += 1
         
         self.total_steps += 1
 
         pprof.stop("Environment")
 
-        return self.slice_obs(obs), reward, terminated, info, done
+        return self.slice_obs(obs), reward, terminated, truncated, info
     
 class EpisodeTrackerWrapper(AtariWrapper):
     def __init__(self, env: Env, frames_per_action: int, max_events_per_cat: np.array, relevant_cat_count: int=2, verbose: bool=True):
@@ -65,11 +65,15 @@ class EpisodeTrackerWrapper(AtariWrapper):
 
 
     def step(self, action_data):
-        obs, reward, terminated, info, done = super().step(action_data)
+        obs, reward, terminated, truncated, info = super().step(action_data)
         render, events, categories = self.episode_tracker.process_frame(obs)
 
         self.to_render = render
+        
+        return self.create_observation(events, categories), reward, terminated, truncated, info
+    
 
+    def create_observation(self, events, categories):
         # Order categories
         for i in range(1, len(categories)):
             key = categories[i]
@@ -90,7 +94,7 @@ class EpisodeTrackerWrapper(AtariWrapper):
             count += self.max_events_per_cat[i]
 
         # Create observation
-        obs = np.zeros((count, 4))
+        obs = np.zeros((np.sum(self.max_events_per_cat), 4))
         for event in events:
             if event.category != "MOVEMENT":
                 continue
@@ -102,19 +106,17 @@ class EpisodeTrackerWrapper(AtariWrapper):
             obs[cat_first_pos[cat] + cat_pos[cat], :] = self.create_state(event, self.episode_tracker)
             
             cat_pos[cat] += 1
-
-            
         
-        return obs, reward, terminated, info, done
-    
+        return obs
+
 
     def reset(self, seed=None):
         obs, info = super().reset(seed)
-        events = self.episode_tracker.process_frame(obs)
         self.episode_tracker.finish_episode()
+        render, events, categories = self.episode_tracker.process_frame(obs)
         
-        self.to_render = events[0]
-        return events, info
+        self.to_render = render
+        return self.create_observation(events, categories), info
     
 
     def render(self):
