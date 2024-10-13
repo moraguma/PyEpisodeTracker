@@ -24,6 +24,9 @@ env = EpisodeTrackerWrapper(gym.make("ALE/Freeway-v5", render_mode="rgb_array"),
 config = {
     "type": "dqn",
     "run_name": "PYET DQN",
+    "save_every_steps": 1000000,
+    "save_path": "PYETDQN",
+    "load_path": "PYETDQN",
     "action_space": {
         "type": "discrete",
         "n": 3
@@ -34,7 +37,7 @@ config = {
         "type": "lin_decrease",
         "start": 0.9,
         "end": 0.1,
-        "steps_to_end": 200000
+        "steps_to_end": 10000000
     },
     "batch_size": 64,
     "grad_clip_value": 100,
@@ -73,8 +76,9 @@ agent.initialize(config)
 #######
 # Run #
 #######
-EPISODE_COUNT = 100
-LOG_INTERVAL = 10
+EPISODE_COUNT = 10000
+LOG_INTERVAL = 100
+PLOT_INTERVAL = 1000
 for i in range(EPISODE_COUNT):
     obs, info = env.reset()
     obs = torch.tensor(obs, dtype=torch.float32, device=device).flatten().unsqueeze(0)
@@ -95,6 +99,7 @@ for i in range(EPISODE_COUNT):
 
     if i % LOG_INTERVAL == 0:
         print("Finished %d/%d episodes; ETR - %s; ET - %s" % (i + 1, EPISODE_COUNT, pprof.get_etr(i + 1, EPISODE_COUNT), pprof.get_et()))
+    if i % PLOT_INTERVAL == 0:
         name = "results/EP%s" % (i)
         pprof.save_csv(name)
         pprof.plot(name)
