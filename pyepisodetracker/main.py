@@ -15,7 +15,7 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 ###############
 # Startup gym #
 ###############
-env = EpisodeTrackerWrapper(gym.make("ALE/Freeway-v5", render_mode="rgb_array"), 2, np.array([10, 2]))
+env = EpisodeTrackerWrapper(gym.make("ALE/Freeway-v5", render_mode="rgb_array"), 4, np.array([10, 2]))
 
 
 ########################
@@ -32,23 +32,22 @@ config = {
         "n": 3
     },
     "gamma": 0.99,
-    "tau": 0.005,
+    "target_network_update_frequency": 10000,
     "epsilon": {
         "type": "lin_decrease",
-        "start": 0.9,
+        "start": 1.0,
         "end": 0.1,
-        "steps_to_end": 10000000
+        "steps_to_end": 1000000
     },
-    "batch_size": 64,
-    "grad_clip_value": 100,
+    "batch_size": 32,
     "loss": "smooth_l1_loss",
     "optimizer": {
-        "type": "adamw",
-        "lr": 0.0001,
-        "amsgrad": True
+        "type": "rmsprop",
+        "lr": 0.00025,
+        "momentum": 0.95
     },
-    "replay_buffer_size": 100000,
-    "min_replay_size": 5000,
+    "replay_buffer_size": 1000000,
+    "min_replay_size": 50000,
     "network": [
         {
             "type": "linear",
