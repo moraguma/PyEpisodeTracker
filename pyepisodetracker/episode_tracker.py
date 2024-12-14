@@ -9,7 +9,7 @@ ORIENTATION_DIF_TOLERANCE = 0.2
 AREA_DIF_TOLERANCE = 16
 
 SPEED_DIF_TOLERANCE = 6
-MAX_SPEED = 50
+MAX_SPEED = 100
 
 
 class Vector2():
@@ -67,19 +67,20 @@ class Object():
 
 
 class ObjectCategory():
-    def __init__(self, size: Vector2, orientation: float, indicator_color: np.array) -> None:
+    def __init__(self, size: Vector2, orientation: float, color: int, indicator_color: np.array) -> None:
         self.size = size
         self.orientation = orientation
+        self.color = color
         self.indicator_color = indicator_color
     
     
     def belongs(self, object: Object) -> bool:
-        return abs(self.size.area() - object.size.area()) <= AREA_DIF_TOLERANCE and abs(self.orientation - object.orientation) <= ORIENTATION_DIF_TOLERANCE
+        return object.color == self.color
     
 
     @staticmethod
     def from_obj(object: Object):
-        return ObjectCategory(object.size, object.orientation, np.random.randint(256, size=(3)))
+        return ObjectCategory(object.size, object.orientation, object.color, np.random.randint(256, size=(3)))
 
 
     def __repr__(self) -> str:
@@ -224,11 +225,13 @@ class EpisodeTracker():
 
             for j, contour in enumerate(contours):
                 bbox = cv2.boundingRect(contour)
-                if bbox[2] <= 1 or bbox[3] <= 1 or bbox[0] == 0 or bbox[1] == 0 or bbox[0] + bbox[2] >= r.shape[1] or bbox[1] + bbox[3] >= r.shape[0]:
-                    continue
+                #if bbox[2] <= 1 or bbox[3] <= 1 or bbox[0] == 0 or bbox[1] == 0 or bbox[0] + bbox[2] >= r.shape[1] or bbox[1] + bbox[3] >= r.shape[0]:
+                #    continue
 
                 orientation = cv2.contourArea(contour) / (bbox[2] * bbox[3])
-                objects.append(Object(Vector2(bbox[0], bbox[1]), Vector2(bbox[2], bbox[3]), orientation, r))
+                
+                x, y = tuple(contour[0][0])
+                objects.append(Object(Vector2(bbox[0], bbox[1]), Vector2(bbox[2], bbox[3]), orientation, r[y, x]))
 
         pprof.stop("ET_OBJID")
 
@@ -265,11 +268,14 @@ class EpisodeTracker():
         return data
 
 
-    def get_closest_object(self, pos: Vector2, l: list[Object]) -> Object:
-        best_distance = (l[0].position - pos).manhat_length()
-        best_obj = l[0]
+    def get_closest_object(self, pos: Vector2, cat: ObjectCategory, l: list[Object]) -> Object:
+        best_distance = 99999
+        best_obj = None
         
-        for i in range(1, len(l)):
+        for i in range(len(l)):
+            if l[i].category != cat:
+                continue
+
             new_distance = (l[i].position - pos).manhat_length()
             if new_distance < best_distance:
                 best_distance = new_distance
@@ -282,7 +288,10 @@ class EpisodeTracker():
         if len(dest_list) == 0:
             return
 
-        closest_object = self.get_closest_object(expected_positions[obj], dest_list)
+        closest_object = self.get_closest_object(expected_positions[obj], obj.category, dest_list)
+        if closest_object is None:
+            return
+
         if closest_object in object_transitions_base:
             if not closest_object in overfilled_objects:
                 overfilled_objects.append(closest_object)
@@ -351,10 +360,12 @@ class EpisodeTracker():
         for event in self.tracked_events:
             events_by_pos[str(event.current_pos)] = event
         for obj in transitions:
+            if not str(obj.position) in events_by_pos:
+                continue
             event = events_by_pos[str(obj.position)]
             if event.category == "APPEARANCE":
                 events.append(MovementEvent(obj.category, event.current_pos, self.timestep - 1, transitions[obj].position))
-            else:
+            elif event.category == "MOVEMENT":
                 vel = transitions[obj].position - obj.position
                 if (vel - event.get_vel(self.timestep)).manhat_length() < SPEED_DIF_TOLERANCE and vel.manhat_length() != 0:
                     event.current_pos = transitions[obj].position

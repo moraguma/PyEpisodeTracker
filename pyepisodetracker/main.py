@@ -7,15 +7,50 @@ import numpy as np
 from torchbringer.servers.torchbringer_agent import TorchBringerAgent
 import torch
 from peasyprofiller.profiller import profiller as pprof
+from stable_baselines3.common.atari_wrappers import (
+    ClipRewardEnv,
+    EpisodicLifeEnv,
+    FireResetEnv,
+    MaxAndSkipEnv,
+    NoopResetEnv,
+)
+
+
+def callback(obs_t, obs_tp1, action, rew, terminated, truncated, info):
+    print(obs_tp1)
+    pass
 
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 
+ENV_ID = "ALE/Pong-v5"
+def make_env():
+    env = gym.make(ENV_ID, render_mode="rgb_array")
+    env = gym.wrappers.RecordEpisodeStatistics(env)
+
+    env = NoopResetEnv(env, noop_max=30)
+    env = MaxAndSkipEnv(env, skip=4)
+    env = EpisodicLifeEnv(env)
+    if "FIRE" in env.unwrapped.get_action_meanings():
+        env = FireResetEnv(env)
+    env = ClipRewardEnv(env)
+    env = EpisodeTrackerWrapper(env, 1, np.array([1, 1, 1, 1]), relevant_cat_count=4)
+
+    return env
+
+
 ###############
 # Startup gym #
 ###############
-env = EpisodeTrackerWrapper(gym.make("ALE/Freeway-v5", render_mode="rgb_array"), 4, np.array([10, 2]))
+env = make_env()
+env.reset()
+#for i in range(40):
+#    obs, reward, terminated, truncated, info = env.step(0)
+#for i in range(10):
+#    obs, reward, terminated, truncated, info = env.step(3)
+#    cv2.imwrite(f"images/test{i}.png", cv2.cvtColor(env.to_render, cv2.COLOR_BGR2RGB))
+play(env, callback=callback, keys_to_action=KEYMAP)
 
 
 ########################

@@ -20,7 +20,7 @@ class AtariWrapper(Wrapper):
     
 
     def slice_obs(self, obs):
-        return obs[15:196, 8:]
+        return obs[34:194, 8:]
 
 
     def reset(self, seed=None):
@@ -48,11 +48,12 @@ class AtariWrapper(Wrapper):
         return self.slice_obs(obs), reward, terminated, truncated, info
     
 class EpisodeTrackerWrapper(AtariWrapper):
-    def __init__(self, env: Env, frames_per_action: int, max_events_per_cat: np.array, relevant_cat_count: int=2, verbose: bool=True):
+    def __init__(self, env: Env, frames_per_action: int, max_events_per_cat: np.array, relevant_cat_count: int=2, y_event_ordering: bool=True, verbose: bool=True):
         super().__init__(env, frames_per_action, verbose)
 
+        self.y_event_ordering = y_event_ordering
         self.max_events_per_cat = max_events_per_cat
-        self.episode_tracker = EpisodeTracker(np.array([np.array([142, 142, 142]), np.array([170, 170, 170]), np.array([214, 214, 214])]), relevant_cat_count)
+        self.episode_tracker = EpisodeTracker(np.array([np.array([144, 72, 17])]), relevant_cat_count)
         self.to_render = None
 
 
@@ -92,6 +93,17 @@ class EpisodeTrackerWrapper(AtariWrapper):
             cat_pos[categories[i]] = 0
             cat_first_pos[categories[i]] = count
             count += self.max_events_per_cat[i]
+        
+        # Order events
+        compare = "y" if self.y_event_ordering else "x"
+        for i in range(1, len(events)):
+            key = events[i]
+            j = i - 1
+
+            while j >= 0 and getattr(key.current_pos, compare) > getattr(events[j].current_pos, compare):
+                events[j + 1] = events[j]
+                j -= 1
+            events[j + 1] = key
 
         # Create observation
         obs = np.zeros((np.sum(self.max_events_per_cat), 4))
